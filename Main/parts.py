@@ -17,55 +17,65 @@ class Thruster :
         return self.filepath
 
 
-class NoseCone :
-    def __init__(self, shapeType, material, height):
-        self.shapeType = shapeType
+class NoseCone:
+    def __init__(self, name, material, height, radius, wall_thickness, density):
+        self.name = name
         self.material = material
         self.height = height
-        with open("materials.json", "r") as f:
-            materials_db = json.load(f)
+        self.radius = radius
+        self.wall_thickness = wall_thickness 
         
-
-        density = materials_db.get(self.material, 680.0)
-        
-
         slant_height = math.sqrt(self.radius**2 + self.height**2)
         surface_area = math.pi * self.radius * slant_height
         volume = surface_area * self.wall_thickness
         
-
         self.mass = density * volume
-       
 
-    def getDrag(self):
-        return 0
-    
-    def getMass(self):
-        return self.mass
-
-class BodyTube :
-    def __init__(self, material, height, radius, wallThickness):
-        self.material = material
-        self.height = height
-        self.radius = radius
-        self.wallThickness = wallThickness
-
-        with open("materials.json", "r") as f:
-            materials_db = json.load(f)
-            
-        density = materials_db.get(self.material, 680.0)
+    @classmethod
+    def from_catalog(cls, name, data, materials_db):
+        h = float(data.get('Length', 0)) / 1000
+        r = float(data.get('OutsideDiameter', 0)) / 2000
+        t = float(data.get('WallThickness', 0.001)) / 1000
+        mat_name = data.get('Material', 'cardboard')
         
-        r_outer = self.radius
-        r_inner = r_outer - self.wallThickness
-        volume = math.pi * (r_outer**2 - r_inner**2) * self.height
+        density = materials_db.get(mat_name, 680.0)
+        
+        return cls(name, mat_name, h, r, t, density)
 
-        self.mass = density * volume
-
-    def getDrag(self):
-        return 0
     
     def getMass(self):
         return self.mass
+
+class BodyTube:
+    def __init__(self, name, material, height, radius, wall_thickness, density):
+        self.name = name
+        self.material = material
+        self.height = height # in meters
+        self.radius = radius # in meters
+        self.wall_thickness = wall_thickness # in meters
+        
+        # Physics Calculation
+        r_outer = self.radius
+        r_inner = r_outer - self.wall_thickness
+        volume = math.pi * (r_outer**2 - r_inner**2) * self.height
+        self.mass = density * volume
+
+    @classmethod
+    def from_catalog(cls, name, data, materials_db):
+        h = float(data.get('Length', 0)) / 1000
+        r = float(data.get('OutsideDiameter', 0)) / 2000
+        t = float(data.get('WallThickness', 0.001)) / 1000
+        mat_name = data.get('Material', 'cardboard')
+        
+        density = materials_db.get(mat_name, 680.0)
+        
+        return cls(name, mat_name, h, r, t, density)
+
+    def getMass(self):
+        return self.mass
+    
+    
+
     
 class Fins :
     def __init__(self, material, count, thickness, root_chord, tip_chord, semi_span, isSanded):
