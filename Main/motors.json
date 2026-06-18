@@ -1,0 +1,373 @@
+{
+    "A8-3": {
+        "designation": "A8-3",
+        "common_name": "A8",
+        "manufacturer": "Estes",
+        "diameter_mm": 18.0,
+        "length_mm": 70.0,
+        "delays": [
+            "3"
+        ],
+        "propellant_mass_g": 3.12,
+        "total_mass_g": 16.0,
+        "burn_time_s": 0.5,
+        "thrust_curve": [
+            [
+                0.0,
+                0.0
+            ],
+            [
+                0.05,
+                11.2
+            ],
+            [
+                0.1,
+                9.8
+            ],
+            [
+                0.2,
+                4.8
+            ],
+            [
+                0.3,
+                4.5
+            ],
+            [
+                0.4,
+                4.3
+            ],
+            [
+                0.5,
+                0.0
+            ]
+        ]
+    },
+    "B6-4": {
+        "designation": "B6-4",
+        "common_name": "B6",
+        "manufacturer": "Estes",
+        "diameter_mm": 18.0,
+        "length_mm": 70.0,
+        "delays": [
+            "4"
+        ],
+        "propellant_mass_g": 6.24,
+        "total_mass_g": 20.1,
+        "burn_time_s": 0.83,
+        "thrust_curve": [
+            [
+                0.0,
+                0.0
+            ],
+            [
+                0.05,
+                12.1
+            ],
+            [
+                0.1,
+                11.8
+            ],
+            [
+                0.2,
+                4.9
+            ],
+            [
+                0.4,
+                4.7
+            ],
+            [
+                0.6,
+                4.5
+            ],
+            [
+                0.8,
+                4.2
+            ],
+            [
+                0.83,
+                0.0
+            ]
+        ]
+    },
+    "C6-5": {
+        "designation": "C6-5",
+        "common_name": "C6",
+        "manufacturer": "Estes",
+        "diameter_mm": 18.0,
+        "length_mm": 70.0,
+        "delays": [
+            "5"
+        ],
+        "propellant_mass_g": 12.48,
+        "total_mass_g": 24.9,
+        "burn_time_s": 1.6,
+        "thrust_curve": [
+            [
+                0.0,
+                0.0
+            ],
+            [
+                0.05,
+                14.1
+            ],
+            [
+                0.1,
+                13.5
+            ],
+            [
+                0.2,
+                4.8
+            ],
+            [
+                0.5,
+                4.6
+            ],
+            [
+                0.9,
+                4.4
+            ],
+            [
+                1.3,
+                4.3
+            ],
+            [
+                1.6,
+                0.0
+            ]
+        ]
+    },
+    "D12-5": {
+        "designation": "D12-5",
+        "common_name": "D12",
+        "manufacturer": "Estes",
+        "diameter_mm": 24.0,
+        "length_mm": 70.0,
+        "delays": [
+            "5"
+        ],
+        "propellant_mass_g": 24.93,
+        "total_mass_g": 42.1,
+        "burn_time_s": 1.7,
+        "thrust_curve": [
+            [
+                0.0,
+                0.0
+            ],
+            [
+                0.05,
+                29.7
+            ],
+            [
+                0.1,
+                28.5
+            ],
+            [
+                0.2,
+                11.9
+            ],
+            [
+                0.5,
+                11.5
+            ],
+            [
+                1.0,
+                11.1
+            ],
+            [
+                1.5,
+                10.8
+            ],
+            [
+                1.7,
+                0.0
+            ]
+        ]
+    },
+    "Q-A8-3": {
+        "designation": "A8-3",
+        "common_name": "A8",
+        "manufacturer": "Quest",
+        "diameter_mm": 18.0,
+        "length_mm": 70.0,
+        "delays": [
+            "3"
+        ],
+        "propellant_mass_g": 3.5,
+        "total_mass_g": 16.5,
+        "burn_time_s": 0.5,
+        "thrust_curve": [
+            [
+                0.0,
+                0.0
+            ],
+            [
+                0.05,
+                10.5
+            ],
+            [
+                0.1,
+                9.0
+            ],
+            [
+                0.3,
+                4.6
+            ],
+            [
+                0.5,
+                0.0
+            ]
+        ]
+    },
+    "Q-B6-4": {
+        "designation": "B6-4",
+        "common_name": "B6",
+        "manufacturer": "Quest",
+        "diameter_mm": 18.0,
+        "length_mm": 70.0,
+        "delays": [
+            "4"
+        ],
+        "propellant_mass_g": 6.5,
+        "total_mass_g": 21.0,
+        "burn_time_s": 0.8,
+        "thrust_curve": [
+            [
+                0.0,
+                0.0
+            ],
+            [
+                0.05,
+                11.5
+            ],
+            [
+                0.1,
+                10.8
+            ],
+            [
+                0.4,
+                5.0
+            ],
+            [
+                0.8,
+                0.0
+            ]
+        ]
+    },
+    "D15-4": {
+        "designation": "D15-4",
+        "common_name": "D15",
+        "manufacturer": "AeroTech",
+        "diameter_mm": 24.0,
+        "length_mm": 70.0,
+        "delays": [
+            "4"
+        ],
+        "propellant_mass_g": 21.0,
+        "total_mass_g": 45.0,
+        "burn_time_s": 1.62,
+        "thrust_curve": [
+            [
+                0.0,
+                0.0
+            ],
+            [
+                0.1,
+                22.5
+            ],
+            [
+                0.2,
+                19.8
+            ],
+            [
+                0.6,
+                15.2
+            ],
+            [
+                1.2,
+                14.5
+            ],
+            [
+                1.62,
+                0.0
+            ]
+        ]
+    },
+    "E15-4": {
+        "designation": "E15-4",
+        "common_name": "E15",
+        "manufacturer": "AeroTech",
+        "diameter_mm": 24.0,
+        "length_mm": 70.0,
+        "delays": [
+            "4"
+        ],
+        "propellant_mass_g": 30.0,
+        "total_mass_g": 62.0,
+        "burn_time_s": 2.1,
+        "thrust_curve": [
+            [
+                0.0,
+                0.0
+            ],
+            [
+                0.1,
+                24.5
+            ],
+            [
+                0.3,
+                19.0
+            ],
+            [
+                1.0,
+                14.8
+            ],
+            [
+                1.8,
+                14.2
+            ],
+            [
+                2.1,
+                0.0
+            ]
+        ]
+    },
+    "F32-6": {
+        "designation": "F32-6",
+        "common_name": "F32",
+        "manufacturer": "AeroTech",
+        "diameter_mm": 24.0,
+        "length_mm": 95.0,
+        "delays": [
+            "6"
+        ],
+        "propellant_mass_g": 37.7,
+        "total_mass_g": 81.0,
+        "burn_time_s": 1.3,
+        "thrust_curve": [
+            [
+                0.0,
+                0.0
+            ],
+            [
+                0.05,
+                45.0
+            ],
+            [
+                0.2,
+                36.5
+            ],
+            [
+                0.6,
+                31.0
+            ],
+            [
+                1.0,
+                30.5
+            ],
+            [
+                1.3,
+                0.0
+            ]
+        ]
+    }
+}
