@@ -1,20 +1,88 @@
 import math
 import json
+import os
 
-class Thruster :
-    def __init__(self, filepath):
-        self.filepath = filepath
-        self.impulse = 10
-        self.mass = 10
-    
-    def getImpulse(self):
-        return self.impulse
-    
+class Thruster:
+    def __init__(self, designation, propellant_mass, total_mass, burn_time, thrust_curve):
+        """
+        Represents the rocket's propulsion engine component.
+        """
+        self.designation = designation.upper().strip()
+        self.propellant_mass_g = float(propellant_mass)
+        self.total_mass_g = float(total_mass)
+        self.burn_time_s = float(burn_time)
+        self.thrust_curve = thrust_curve  # Expects a list of [time, force] coordinate lists
+
+    @classmethod
+    def from_database(cls, designation, motors_db_path="./Main/motors.json"):
+        """
+        Factory method to initialize a Thruster directly from your parsed global JSON database.
+        """
+        desg_upper = designation.upper().strip()
+        
+        if not os.path.exists(motors_db_path):
+            print(f"[-] Warning: Motor database file missing at {motors_db_path}. Using fallback defaults.")
+            return cls(desg_upper, 20.0, 60.0, 1.5, [])
+
+        with open(motors_db_path, 'r', encoding='utf-8') as f:
+            database = json.load(f)
+            
+        profile = database.get(desg_upper)
+        if profile:
+            return cls(
+                designation=desg_upper,
+                propellant_mass=profile.get("propellant_mass_g", 0.0),
+                total_mass=profile.get("total_mass_g", 0.0),
+                burn_time=profile.get("burn_time_s", 1.0),
+                thrust_curve=profile.get("thrust_curve", [])
+            )
+        else:
+            print(f"[-] Warning: '{desg_upper}' not found in database. Using fallback defaults.")
+            return cls(desg_upper, 20.0, 60.0, 1.5, [])
+
     def getMass(self):
-        return self.mass
-    
+        """Returns the static liftoff total mass in grams (matching NoseCone/BodyTube style)."""
+        return self.total_mass_g
+
+    def getMassAtTime(self, current_time):
+        """
+        Calculates the instantaneous dynamic mass of the motor assembly in grams 
+        as propellant mass burns away during flight.
+        """
+        if current_time <= 0:
+            return self.total_mass_g
+        if current_time >= self.burn_time_s:
+            return self.total_mass_g - self.propellant_mass_g  # Empty structural casing remains
+            
+        # Linear approximation model for propellant consumption rates
+        remaining_propellant = self.propellant_mass_g * (1.0 - (current_time / self.burn_time_s))
+        empty_casing_mass = self.total_mass_g - self.propellant_mass_g
+        return empty_casing_mass + remaining_propellant
+
+    def getThrustAtTime(self, current_time):
+        """
+        Linearly interpolates between the closest coordinate points in the 
+        thrust curve matrix to find the force output in Newtons.
+        """
+        if not self.thrust_curve or current_time <= 0:
+            return 0.0
+            
+        if current_time >= self.thrust_curve[-1][0]:
+            return 0.0
+
+        for i in range(len(self.thrust_curve) - 1):
+            t0, f0 = self.thrust_curve[i]
+            t1, f1 = self.thrust_curve[i+1]
+            
+            if t0 <= current_time <= t1:
+                fraction = (current_time - t0) / (t1 - t0)
+                return round(f0 + fraction * (f1 - f0), 3)
+                
+        return 0.0
+
     def getModel(self):
-        return self.filepath
+        """Returns the engine tracking configuration name."""
+        return self.designation
 
 
 class NoseCone:

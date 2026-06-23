@@ -20,7 +20,8 @@ def parse_local_eng_file(file_path):
 
 def parse_raw_eng_text(raw_text):
     """
-    Parses raw RASP text strings line-by-line.
+    Parses raw RASP text strings line-by-line. 
+    Works for both local files and raw multi-line string blocks.
     """
     engines_found = {}
     lines = raw_text.strip().split('\n')
@@ -133,8 +134,15 @@ def download_and_sync_global_library():
         
         cursor.execute("PRAGMA table_info(thrust_data);")
         td_cols = [c[1] for c in cursor.fetchall()]
+        
+        # Explicitly isolate column names by searching for keywords or fallback positions
         time_col = "time" if "time" in td_cols else "time_seconds" if "time_seconds" in td_cols else td_cols[1]
-        force_col = "thrust" if "thrust" in td_cols else "force" if "force" in td_cols else td_cols[2]
+        
+        # Explicitly ensure we don't pick the same column name for force/thrust
+        force_col = "thrust" if "thrust" in td_cols else "force" if "force" in td_cols else "thrust_force" if "thrust_force" in td_cols else None
+        if not force_col:
+            # If no keyword matches, select the alternative data column to avoid duplicate assignment
+            force_col = td_cols[2] if td_cols[2] != time_col else td_cols[3]
 
         for row in motor_rows:
             motor_id, designation, common_name, diameter, length, prop_w, total_w, burn_time, mfr_raw = row
@@ -148,7 +156,6 @@ def download_and_sync_global_library():
             
             # Fallback Manufacturer Logic for ambiguous markers
             if mfr_clean in ["Global Database", "Unknown", "", "None"] or mfr_clean.isdigit():
-                # AeroTech uses code letters like 'J', 'W', 'R', 'NT' at the end of their designator strings
                 if desg.endswith('J') or desg.endswith('W') or desg.endswith('R') or desg.endswith('NT') or "AEROTECH" in cname:
                     mfr_clean = "AeroTech"
                 elif desg.startswith('Q') or "QUEST" in cname:
@@ -171,15 +178,28 @@ def download_and_sync_global_library():
                 
                 if curve_id_row:
                     curve_id = curve_id_row[0]
-                    cursor.execute(f"SELECT {time_col}, {force_col} FROM thrust_data WHERE thrust_curve_id = ? ORDER BY {time_col} ASC;", (curve_id,))
+                    link_col = "curve_id" if "curve_id" in td_cols else "thrust_curve_id"
+                    
+                    cursor.execute(f"""
+                        SELECT {time_col}, {force_col} 
+                        FROM thrust_data 
+                        WHERE {link_col} = ? 
+                        ORDER BY {time_col} ASC;
+                    """, (curve_id,))
                     thrust_points = [[round(float(pt[0]), 4), round(float(pt[1]), 3)] for pt in cursor.fetchall()]
                 
-                # Backup Fallback Strategy: If relational links are missing, search thrust curves via designation tags text matching
+                # Backup Fallback Strategy: Search thrust curves directly via designation text matching
                 if not thrust_points:
                     cursor.execute("SELECT id FROM thrust_curves WHERE UPPER(designation) = ? OR UPPER(common_name) = ? LIMIT 1;", (desg, cname))
                     fallback_curve_row = cursor.fetchone()
                     if fallback_curve_row:
-                        cursor.execute(f"SELECT {time_col}, {force_col} FROM thrust_data WHERE thrust_curve_id = ? ORDER BY {time_col} ASC;", (fallback_curve_row[0],))
+                        link_col = "curve_id" if "curve_id" in td_cols else "thrust_curve_id"
+                        cursor.execute(f"""
+                            SELECT {time_col}, {force_col} 
+                            FROM thrust_data 
+                            WHERE {link_col} = ? 
+                            ORDER BY {time_col} ASC;
+                        """, (fallback_curve_row[0],))
                         thrust_points = [[round(float(pt[0]), 4), round(float(pt[1]), 3)] for pt in cursor.fetchall()]
                         
             except Exception:
@@ -220,3 +240,9 @@ def download_and_sync_global_library():
         print(f"[SUCCESS] Universal library built with {len(compiled_library)} total motors!")
         print(f"          Saved directly to: {output_path}")
         print("================================================================")
+    else:
+        print("[-] Process completed, but database filtering returned zero entries.")
+
+if __name__ == "__main__":
+    print("=== Launching motorParser.py ===")
+    download_and_sync_global_library()
