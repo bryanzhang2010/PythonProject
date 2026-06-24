@@ -1,6 +1,7 @@
+import os
 import json
 import math
-import os
+from parts import FinSet, NoseCone, BodyTube  # <-- No "Main." prefix
 
 class Rocket:
     def __init__(self, designation, materials_db_path="./Main/materials.json", motors_db_path="./Main/motors.json"):
@@ -8,32 +9,42 @@ class Rocket:
         Master assembly class for the launch vehicle. Compiles structural parts, 
         aerodynamics, and links the parsed motor thrust configurations.
         """
-        self.designation = designation.upper().strip()
-        self.components = {}  # Holds nose_cone, body_tube, etc.
+        # Force string type casting to guarantee .upper() and .strip() never fail
+        self.designation = str(designation).upper().strip()
+        self.components = {}  # Holds structural part instances (NoseCone, BodyTube)
         self.fin_set = None    # Active FinSet configuration instance
         
-        # 1. Load materials and motor profiles from your database pipelines
+        # Load local JSON materials asset database
         self.materials_db = self._load_json(materials_db_path)
-        with open(motors_db_path, 'r', encoding='utf-8') as f:
-            self.motor_database = json.load(f)
+        
+        # Safely extract the motor database log
+        if not os.path.exists(motors_db_path):
+            print(f"[-] Warning: Motor database file not found at {motors_db_path}")
+            self.motor_database = {}
+        else:
+            with open(motors_db_path, 'r', encoding='utf-8') as f:
+                self.motor_database = json.load(f)
             
-        # 2. Connect the engine specs
+        # Connect the motor specification dictionary profile safely
         self.motor_profile = self.motor_database.get(self.designation)
-        if not self.motor_profile:
-            print(f"[-] Warning: Propulsion engine '{self.designation}' not found in library.")
+        
+        if not self.motor_profile or not isinstance(self.motor_profile, dict):
+            print(f"[-] Warning: Propulsion engine '{self.designation}' profile not found or invalid.")
             self.propellant_mass_kg = 0.0
             self.motor_total_mass_kg = 0.0
             self.motor_dry_mass_kg = 0.0
-            self.burn_time_s = 0.0
+            self.burn_time_s = 1.0
             self.thrust_curve = []
         else:
-            self.propellant_mass_kg = self.motor_profile.get("propellant_mass_g", 0.0) / 1000.0
-            self.motor_total_mass_kg = self.motor_profile.get("total_mass_g", 0.0) / 1000.0
+            # Safely cast metrics to floats to guarantee physics math processing runs smoothly
+            self.propellant_mass_kg = float(self.motor_profile.get("propellant_mass_g", 0.0)) / 1000.0
+            self.motor_total_mass_kg = float(self.motor_profile.get("total_mass_g", 0.0)) / 1000.0
             self.motor_dry_mass_kg = self.motor_total_mass_kg - self.propellant_mass_kg
-            self.burn_time_s = self.motor_profile.get("burn_time_s", 1.0)
+            self.burn_time_s = float(self.motor_profile.get("burn_time_s", 1.0))
             self.thrust_curve = self.motor_profile.get("thrust_curve", [])
 
     def _load_json(self, path):
+        """Internal helper to safely read files without crashing if they don't exist yet."""
         if not os.path.exists(path):
             return {}
         with open(path, 'r', encoding='utf-8') as f:
@@ -41,17 +52,37 @@ class Rocket:
 
     def attach_structure_from_catalog(self, catalog_path="./Main/master_catalog.json"):
         """
-        Automatically parses your master catalog file, builds NoseCone/BodyTube 
-        objects, and hooks them to the structural dictionary.
+        Parses master catalog items safely, converting keys to strings,
+        validating parameters, and ensuring no corrupt objects break assembly.
         """
         catalog = self._load_json(catalog_path)
+        if not catalog:
+            print(f"[-] Warning: Structural catalog data is empty or missing at {catalog_path}")
+            return
+
         for part_id, properties in catalog.items():
-            part_id_lower = part_id.lower()
+            if not properties or not isinstance(properties, dict):
+                continue
+                
+            part_id_lower = str(part_id).lower()
+            part_type = str(properties.get("type", "")).lower().strip()
             
-            if "nose" in part_id_lower or properties.get("type") == "nosecone":
-                self.components[part_id] = NoseCone.from_catalog(part_id, properties, self.materials_db)
-            elif all(k in properties for k in ['outer_diameter', 'inner_diameter', 'length']):
-                self.components[part_id] = BodyTube.from_catalog(part_id, properties, self.materials_db)
+            try:
+                # 1. Look for Nose Cone indicators
+                if "nose" in part_id_lower or part_type == "nosecone":
+                    cone_instance = NoseCone.from_catalog(part_id, properties, self.materials_db)
+                    if cone_instance is not None:
+                        self.components[part_id] = cone_instance
+                
+                # 2. Look for Body Tube indicators (handles case-insensitive configurations)
+                elif "tube" in part_id_lower or any(k in properties for k in ['outer_diameter', 'inner_diameter', 'length', 'Length', 'OutsideDiameter']):
+                    tube_instance = BodyTube.from_catalog(part_id, properties, self.materials_db)
+                    if tube_instance is not None:
+                        self.components[part_id] = tube_instance
+                        
+            except Exception as e:
+                print(f"[-] Skipping corrupted component entry [{part_id}]: {e}")
+                continue
 
     def set_fins(self, fin_instance):
         """Attaches an explicit FinSet geometry instance (Trapezoidal, Elliptical, or Freeform)"""
@@ -62,7 +93,15 @@ class Rocket:
 
     def get_dry_airframe_mass_kg(self):
         """Sums the weight of all structural components currently attached (excluding motor)."""
-        total_mass_g = sum(part.getMass() for part in self.components.values())
+        total_mass_g = 0.0
+        
+        for part in self.components.values():
+            # Safely verify structural attributes or execution methods before computing weight sum
+            if hasattr(part, 'getMass'):
+                total_mass_g += float(part.getMass())
+            elif hasattr(part, 'mass'):
+                total_mass_g += float(part.mass)
+                
         return total_mass_g / 1000.0
 
     def get_total_mass_at_time(self, current_time):
@@ -98,34 +137,11 @@ class Rocket:
                 return round(f0 + fraction * (f1 - f0), 3)
         return 0.0
 
-    def get_aerodynamics(self):
-        """Gathers stability calculations across the composite structure."""
+    def get_aerodynamics(self) -> dict:
+        """
+        Gathers stability calculations across the composite structure.
+        Explicit type hint forcing guarantees VS Code intercepts dictionary properties.
+        """
         if self.fin_set:
             return self.fin_set.calculate_aerodynamics()
         return {"C_N_alpha": 0.0, "X_cp_mm": 0.0}
-
-
-# Operational execution block for self-contained testing
-if __name__ == "__main__":
-    print("=== Testing Full Component Hierarchy ===")
-    
-    # 1. Initialize rocket with your parsed data layout profiles
-    my_rocket = Rocket(designation="C3.4T")
-    
-    # 2. Attach airframe elements from your inventory files
-    my_rocket.attach_structure_from_catalog()
-    
-    # 3. Create a Trapezoidal fin planform configuration and attach it
-    # parameters: count, body_diameter, root_chord, tip_chord, semi_span, sweep_length
-    fins = TrapezoidalFinSet(count=4, body_diameter=0.038, root_chord=0.080, tip_chord=0.040, semi_span=0.050, sweep_length=0.025)
-    my_rocket.set_fins(fins)
-    
-    # 4. Print telemetry checks out to the terminal console screen
-    print(f"[+] Total Attached Structural Parts: {len(my_rocket.components)}")
-    print(f"[+] Computed Dry Structure Mass   : {my_rocket.get_dry_airframe_mass_kg() * 1000.0:.2f}g")
-    print(f"[+] Liftoff Mass (Loaded)        : {my_rocket.get_total_mass_at_time(0.0) * 1000.0:.2f}g")
-    
-    # 5. Output aerodynamic parameters from our Barrowman models
-    aero = my_rocket.get_aerodynamics()
-    print(f"[+] Fin Aero Lift Coefficient    : {aero.get('C_N_alpha')}")
-    print(f"[+] Fin Center of Pressure (CP)  : {aero.get('X_cp_mm')} mm from root leading edge")

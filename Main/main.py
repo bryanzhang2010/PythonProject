@@ -1,7 +1,7 @@
 import os
 import json
 from rocket import Rocket
-from parts import TrapezoidalFinSet, Thruster
+from parts import TrapezoidalFinSet
 
 def run_flight_simulation(rocket_instance, time_step=0.01, max_duration=5.0):
     """
@@ -12,7 +12,7 @@ def run_flight_simulation(rocket_instance, time_step=0.01, max_duration=5.0):
     print(f"  LAUNCH SIMULATION RUNNER: ENGINE MODEL [{rocket_instance.designation}]")
     print("=========================================================")
     
-    # Extract aerodynamic baseline calculated from your parts file
+    # Extract aerodynamic baseline calculated from your Barrowman formulas
     aero_properties = rocket_instance.get_aerodynamics()
     print(f"[AERO] Barrowman C_N_alpha: {aero_properties.get('C_N_alpha', 0.0)}")
     print(f"[AERO] Center of Pressure (CP): {aero_properties.get('X_cp_mm', 0.0)} mm from root LE")
@@ -23,27 +23,26 @@ def run_flight_simulation(rocket_instance, time_step=0.01, max_duration=5.0):
     current_time = 0.0
     altitude = 0.0
     velocity = 0.0
-    g = 9.80665 # Standard Earth gravity acceleration (m/s^2)
+    g = 9.80665  # acceleration due to gravity (m/s^2)
     
     print(f"{'Time (s)':<10}{'Thrust (N)':<12}{'Mass (g)':<12}{'Accel (m/s²)':<15}{'Velocity (m/s)':<18}{'Altitude (m)':<12}")
     print("-" * 80)
 
-    # Telemetry interval logging constraint
-    sample_rate = 0.1  # Log updates to terminal every 100ms
+    # Telemetry interval logging constraint (log every 100ms)
+    sample_rate = 0.1  
     last_logged_time = -sample_rate
 
-    # Run loop until rocket hits the ground or duration limit passes
+    # Run loop until rocket duration limit passes or it lands back down
     while current_time <= max_duration:
         # 1. Fetch live metrics from integrated parts layout
         thrust = rocket_instance.get_thrust_at_time(current_time)
         mass_kg = rocket_instance.get_total_mass_at_time(current_time)
         
-        # 2. Physics Force Balance: F_net = Thrust - Weight (Ignoring drag for this baseline script verification)
+        # 2. Physics Force Balance: F_net = Thrust - Weight
         weight_force = mass_kg * g
         net_force = thrust - weight_force
         
         # 3. Kinematic Integration (Euler-Cromer Method)
-        # If rocket is sitting cold on the launch pad with insufficient thrust, don't drop negative altitude
         if altitude <= 0.0 and net_force <= 0.0:
             acceleration = 0.0
             velocity = 0.0
@@ -60,6 +59,7 @@ def run_flight_simulation(rocket_instance, time_step=0.01, max_duration=5.0):
 
         # Break simulation cleanly if rocket hits apogee and returns to earth baseline
         if current_time > rocket_instance.burn_time_s and altitude <= 0.0 and velocity <= 0.0:
+            print("[*] Touchdown detected.")
             break
 
         current_time += time_step
@@ -70,26 +70,25 @@ def run_flight_simulation(rocket_instance, time_step=0.01, max_duration=5.0):
 
 
 if __name__ == "__main__":
-    # Ensure your paths mirror your local repo structure
-    # Instantiate a rocket configuration testing out the high-burn C3.4T motor
+    # 1. Instantiate a rocket testing out a high-performance motor (e.g., C3.4T or D10W)
     test_rocket = Rocket(designation="C3.4T")
     
-    # 1. Automatically parse structural tube and nose variables from master inventory
+    # 2. Automatically parse structural tube and nose dimensions from your master catalog
     test_rocket.attach_structure_from_catalog()
     
-    # 2. Construct a real geometric fin planform configuration layout
+    # 3. Construct a real geometric fin planform configuration layout
     # Params: count, body_diameter, root_chord, tip_chord, semi_span, sweep_length
     test_fins = TrapezoidalFinSet(
         count=4, 
-        body_diameter=0.024, # 24mm mounting step diameter alignment
+        body_diameter=0.024,  # 24mm body alignment tube
         root_chord=0.050, 
         tip_chord=0.020, 
         semi_span=0.035, 
         sweep_length=0.015
     )
     
-    # Bind the aerodynamics block to the active airframe engine
+    # Bind the aerodynamics block to the active airframe
     test_rocket.set_fins(test_fins)
     
-    # 3. Execute the flight solver routine
+    # 4. Execute the flight solver routine
     run_flight_simulation(test_rocket, time_step=0.01, max_duration=4.0)
