@@ -5,6 +5,142 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 from calculations import Rocket
 
+class SearchableDropdown(tk.Frame):
+    """Custom clean auto-filtering dropdown component with an integrated search input."""
+    def __init__(self, parent, values, on_select_callback=None, **kwargs):
+        super().__init__(parent, bg="#2d2d2d")
+        self.all_values = values
+        self.filtered_values = values
+        self.current_selection = values[0] if values else ""
+        self.on_select_callback = on_select_callback
+        
+        # Main visibility text field box - Initialized to DISABLED state
+        self.entry = tk.Entry(self, fg="#000000", bg="#e0e0e0", font=("Arial", 10), 
+                              insertbackground="black", state="disabled")
+        self.entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        self.entry.config(state="normal")
+        self.entry.insert(0, self.current_selection)
+        self.entry.config(state="disabled")
+        
+        # HIGH VISIBILITY: Green arrow indicator with a black arrow symbol
+        self.btn = tk.Button(self, text=" ▼ ", font=("Arial", 9, "bold"), 
+                             fg="#000000", bg="#00cc55", activebackground="#00aa44", activeforeground="#000000",
+                             relief=tk.RAISED, bd=1, command=self.toggle_dropdown)
+        self.btn.pack(side=tk.RIGHT, fill=tk.Y, padx=(2, 0))
+        
+        self.entry.bind("<Double-Button-1>", self.unlock_entry_field)
+        self.entry.bind("<KeyRelease>", self.on_key_type)
+        
+        self.listbox_window = None
+
+    def unlock_entry_field(self, event):
+        self.entry.config(state="normal", bg="#ffffff")
+        self.entry.focus_set()
+        self.entry.select_range(0, tk.END)
+
+    def on_key_type(self, event):
+        if self.entry.cget("state") == "disabled":
+            return
+        if event.keysym in ("Up", "Down", "Return", "Escape"):
+            return
+            
+        typed_text = self.entry.get().lower()
+        if not typed_text:
+            self.filtered_values = self.all_values
+        else:
+            self.filtered_values = [item for item in self.all_values if typed_text in item.lower()]
+        
+        if not (self.listbox_window and self.listbox_window.winfo_exists()):
+            self.show_dropdown_tray()
+        else:
+            self.refresh_tray_items()
+            
+        if self.listbox_window and self.listbox_window.winfo_exists():
+            self.listbox_window.lift()
+
+    def toggle_dropdown(self):
+        if self.listbox_window and self.listbox_window.winfo_exists():
+            self.close_dropdown_tray()
+        else:
+            self.show_dropdown_tray()
+
+    def show_dropdown_tray(self):
+        if self.listbox_window and self.listbox_window.winfo_exists():
+            self.listbox_window.destroy()
+            
+        self.listbox_window = tk.Toplevel(self)
+        self.listbox_window.wm_overrideredirect(True)
+        
+        root_window = self.winfo_toplevel()
+        self.listbox_window.wm_transient(root_window)
+        
+        x = self.entry.winfo_rootx()
+        y = self.entry.winfo_rooty() + self.entry.winfo_height()
+        w = self.winfo_width()
+        
+        h = min(len(self.filtered_values) * 22, 140) if self.filtered_values else 30
+        self.listbox_window.wm_geometry(f"{w}x{h}+{x}+{y}")
+        
+        scrollbar = tk.Scrollbar(self.listbox_window)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        self.listbox = tk.Listbox(self.listbox_window, fg="#ffffff", bg="#252526", 
+                                  selectbackground="#00ff66", selectforeground="#000000",
+                                  font=("Arial", 10), yscrollcommand=scrollbar.set, relief=tk.FLAT)
+        self.listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=self.listbox.yview)
+        
+        self.refresh_tray_items()
+            
+        self.listbox.bind("<<ListboxSelect>>", self.on_select_click)
+        self.listbox_window.bind("<FocusOut>", self.on_tray_blur)
+        self.listbox_window.lift()
+
+    def on_tray_blur(self, event):
+        focus_owner = self.focus_get()
+        if focus_owner != self.entry and focus_owner != self.listbox:
+            self.close_dropdown_tray()
+
+    def refresh_tray_items(self):
+        self.listbox.delete(0, tk.END)
+        if not self.filtered_values:
+            self.listbox.insert(tk.END, "No items match search")
+        else:
+            for val in self.filtered_values:
+                self.listbox.insert(tk.END, val)
+
+    def on_select_click(self, event):
+        if not self.listbox.curselection():
+            return
+        selected_text = self.listbox.get(self.listbox.curselection()[0])
+        if selected_text == "No items match search":
+            return
+            
+        self.entry.config(state="normal")
+        self.entry.delete(0, tk.END)
+        self.entry.insert(0, selected_text)
+        self.current_selection = selected_text
+        self.filtered_values = self.all_values  
+        
+        self.close_dropdown_tray()
+        self.entry.config(state="disabled", bg="#e0e0e0")
+        self.master.focus_set() 
+        
+        # Fire option select trigger hook
+        if self.on_select_callback:
+            self.on_select_callback(selected_text)
+
+    def close_dropdown_tray(self):
+        if self.listbox_window and self.listbox_window.winfo_exists():
+            self.after(100, self.listbox_window.destroy)
+        if self.entry.winfo_exists():
+            self.entry.config(state="disabled", bg="#e0e0e0")
+
+    def get(self):
+        return self.current_selection
+
+
 class RocketGuiApp:
     def __init__(self, root):
         self.root = root
@@ -14,7 +150,6 @@ class RocketGuiApp:
         
         self.rocket = Rocket()
         
-        # Default fin geometry attributes (in meters)
         self.custom_fin_data = {
             "num_fins": "4",
             "cr": "0.05",
@@ -31,9 +166,6 @@ class RocketGuiApp:
         self.style.configure("TButton", background="#3c3c3c", foreground="#ffffff", font=("Arial", 11, "bold"))
         self.style.configure("Launch.TButton", background="#00ff66", foreground="#000000", font=("Arial", 12, "bold"))
         self.style.configure("Gear.TButton", background="#3a3a3a", foreground="#00ff66", font=("Arial", 11, "bold"))
-        
-        self.style.configure("TEntry", foreground="#000000", fieldbackground="#ffffff")
-        self.style.configure("TCombobox", foreground="#000000", fieldbackground="#ffffff")
         
         self.container = tk.Frame(self.root, bg="#1e1e1e")
         self.container.pack(fill=tk.BOTH, expand=True)
@@ -66,7 +198,7 @@ class RocketGuiApp:
         self.bodytube_ids = sorted(self.bodytube_ids) if self.bodytube_ids else ["None"]
 
     def show_selection_screen(self):
-        """SCREEN 1: Unified dashboard design containing dropdown selectors."""
+        """SCREEN 1: Vehicle Assembly Terminal with live specs monitoring."""
         if self.current_frame:
             self.current_frame.destroy()
             
@@ -76,44 +208,57 @@ class RocketGuiApp:
         self.main_layout_frame = tk.Frame(self.current_frame, bg="#1e1e1e")
         self.main_layout_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         
-        self.card = tk.Frame(self.main_layout_frame, bg="#2d2d2d", padx=35, pady=35, relief=tk.RIDGE, borderwidth=1)
-        self.card.place(relx=0.5, rely=0.5, anchor=tk.CENTER, width=540, height=480)
+        self.card = tk.Frame(self.main_layout_frame, bg="#2d2d2d", padx=35, pady=25, relief=tk.RIDGE, borderwidth=1)
+        self.card.place(relx=0.5, rely=0.5, anchor=tk.CENTER, width=580, height=540)
         
-        tk.Label(self.card, text="VEHICLE ASSEMBLY DASHBOARD", bg="#2d2d2d", fg="#00ff66", font=("Arial", 15, "bold")).pack(pady=(0, 20))
+        tk.Label(self.card, text="VEHICLE ASSEMBLY DASHBOARD", bg="#2d2d2d", fg="#00ff66", font=("Arial", 15, "bold")).pack(pady=(0, 15))
         
-        # 1. Motor
-        ttk.Label(self.card, text="Select Propulsion Motor:", background="#2d2d2d").pack(anchor=tk.W)
-        self.motor_dropdown = ttk.Combobox(self.card, values=self.motor_options, state="readonly")
-        self.motor_dropdown.pack(fill=tk.X, pady=(0, 15))
-        self.motor_dropdown.current(0)
-        self.motor_dropdown.bind("<<ComboboxSelected>>", self.close_dropdown_list)
+        # 1. Searchable Motor Field (Linked to state update callbacks)
+        ttk.Label(self.card, text="Search & Select Propulsion Motor:", background="#2d2d2d").pack(anchor=tk.W)
+        self.motor_dropdown = SearchableDropdown(self.card, values=self.motor_options, on_select_callback=self.update_live_motor_stats)
+        self.motor_dropdown.pack(fill=tk.X, pady=(0, 5))
         
-        # 2. Nose Cone
-        ttk.Label(self.card, text="Select Nose Cone Structure:", background="#2d2d2d").pack(anchor=tk.W)
-        self.nose_dropdown = ttk.Combobox(self.card, values=self.nosecone_ids, state="readonly")
-        self.nose_dropdown.pack(fill=tk.X, pady=(0, 15))
-        self.nose_dropdown.current(0)
-        self.nose_dropdown.bind("<<ComboboxSelected>>", self.close_dropdown_list)
+        # Live Engine Statistics Dashboard Box
+        self.stats_box = tk.LabelFrame(self.card, text=" Live Propulsion Specs ", bg="#2d2d2d", fg="#00ff66", 
+                                       font=("Arial", 9, "bold"), padx=10, pady=8, relief=tk.GROOVE)
+        self.stats_box.pack(fill=tk.X, pady=(0, 15))
         
-        # 3. Body Tube
-        ttk.Label(self.card, text="Select Airframe Body Tube:", background="#2d2d2d").pack(anchor=tk.W)
-        self.tube_dropdown = ttk.Combobox(self.card, values=self.bodytube_ids, state="readonly")
-        self.tube_dropdown.pack(fill=tk.X, pady=(0, 15))
-        self.tube_dropdown.current(0)
-        self.tube_dropdown.bind("<<ComboboxSelected>>", self.close_dropdown_list)
+        self.stat_labels = {}
+        stat_titles = ["Total Impulse:", "Peak Thrust:", "Burn Duration:", "Total Mass:"]
         
-        # 4. Fins Setup (Matches layout of the other dropdown lines with an added side button)
+        grid_frame = tk.Frame(self.stats_box, bg="#2d2d2d")
+        grid_frame.pack(fill=tk.X)
+        for i, title in enumerate(stat_titles):
+            row = i // 2
+            col = (i % 2) * 2
+            
+            lbl = tk.Label(grid_frame, text=title, bg="#2d2d2d", fg="#aaaaaa", font=("Arial", 10, "bold"))
+            lbl.grid(row=row, column=col, sticky=tk.W, padx=(10 if col > 0 else 0, 5), pady=2)
+            
+            val_lbl = tk.Label(grid_frame, text="--", bg="#2d2d2d", fg="#ffffff", font=("Arial", 10))
+            val_lbl.grid(row=row, column=col+1, sticky=tk.W, pady=2)
+            self.stat_labels[title] = val_lbl
+
+        # 2. Searchable Nose Cone Field
+        ttk.Label(self.card, text="Search & Select Nose Cone Structure:", background="#2d2d2d").pack(anchor=tk.W)
+        self.nose_dropdown = SearchableDropdown(self.card, values=self.nosecone_ids)
+        self.nose_dropdown.pack(fill=tk.X, pady=(0, 12))
+        
+        # 3. Searchable Body Tube Field
+        ttk.Label(self.card, text="Search & Select Airframe Body Tube:", background="#2d2d2d").pack(anchor=tk.W)
+        self.tube_dropdown = SearchableDropdown(self.card, values=self.bodytube_ids)
+        self.tube_dropdown.pack(fill=tk.X, pady=(0, 12))
+        
+        # 4. Standard Fins Row Structure (with ⚙️ Edit Specs)
         ttk.Label(self.card, text="Select Fin Set Assembly:", background="#2d2d2d").pack(anchor=tk.W)
-        
         fin_row = tk.Frame(self.card, bg="#2d2d2d")
-        fin_row.pack(fill=tk.X, pady=(0, 25))
+        fin_row.pack(fill=tk.X, pady=(0, 20))
         
-        self.fin_dropdown = ttk.Combobox(fin_row, values=["Custom Fin Set"], state="readonly")
-        self.fin_dropdown.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.fin_dropdown.current(0)
-        self.fin_dropdown.bind("<<ComboboxSelected>>", self.close_dropdown_list)
+        self.fin_display = tk.Entry(fin_row, font=("Arial", 10), fg="#888888", bg="#e0e0e0")
+        self.fin_display.insert(0, f"Custom Fin Set ({self.custom_fin_data['num_fins']} Fins, {self.custom_fin_data['material']})")
+        self.fin_display.config(state="disabled")
+        self.fin_display.pack(side=tk.LEFT, fill=tk.X, expand=True)
         
-        # Compact side editing trigger button
         self.edit_fin_btn = ttk.Button(fin_row, text="⚙️ Edit Specs", style="Gear.TButton", command=self.open_fin_drawer, width=12)
         self.edit_fin_btn.pack(side=tk.RIGHT, padx=(8, 0))
 
@@ -121,10 +266,48 @@ class RocketGuiApp:
         self.launch_btn = ttk.Button(self.card, text="🚀 ASSEMBLE & LAUNCH SIMULATION", style="Launch.TButton", command=self.process_launch_data)
         self.launch_btn.pack(fill=tk.X, ipady=6)
         
+        # Pull initial display profiles down
+        self.update_live_motor_stats(self.motor_dropdown.get())
         self.drawer_frame = None
 
+    def update_live_motor_stats(self, motor_name):
+        """Calculates and displays engine performance metrics directly from the raw thrust curve."""
+        motor_profile = self.rocket.motor_database.get(motor_name, None)
+        
+        if motor_profile and isinstance(motor_profile, dict):
+            thrust_curve = motor_profile.get("thrust_curve", [])
+            
+            # 1. Calculate Peak Thrust (maximum Y-value in the curve)
+            if thrust_curve:
+                peak_thrust = max(point[1] for point in thrust_curve)
+            else:
+                peak_thrust = 0.0
+                
+            # 2. Calculate Total Impulse (Area under the thrust-time curve using Trapezoidal Rule)
+            total_impulse = 0.0
+            if thrust_curve and len(thrust_curve) > 1:
+                for i in range(len(thrust_curve) - 1):
+                    t0, f0 = thrust_curve[i]
+                    t1, f1 = thrust_curve[i+1]
+                    # Area of trapezoid: (width) * (average height)
+                    dt = t1 - t0
+                    avg_force = (f0 + f1) / 2.0
+                    total_impulse += dt * avg_force
+            
+            # 3. Extract Burn Duration and Total Mass safely
+            burn_time = float(motor_profile.get("burn_time_s", 0.0))
+            total_mass = float(motor_profile.get("total_mass_g", 0.0))
+            
+            # Update display labels dynamically
+            self.stat_labels["Total Impulse:"].config(text=f"{total_impulse:.2f} N·s")
+            self.stat_labels["Peak Thrust:"].config(text=f"{peak_thrust:.1f} N")
+            self.stat_labels["Burn Duration:"].config(text=f"{burn_time:.2f} s")
+            self.stat_labels["Total Mass:"].config(text=f"{total_mass:.1f} g")
+        else:
+            for title in self.stat_labels:
+                self.stat_labels[title].config(text="Unknown")
+
     def open_fin_drawer(self):
-        """Slides open full-width drawer workspace to focus exclusively on fin modifications."""
         if self.drawer_frame is not None:
             return
             
@@ -239,9 +422,11 @@ class RocketGuiApp:
         self.drawer_frame = None
         
         self.main_layout_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-
-    def close_dropdown_list(self, event):
-        self.card.focus_set()
+        
+        self.fin_display.config(state="normal")
+        self.fin_display.delete(0, tk.END)
+        self.fin_display.insert(0, f"Custom Fin Set ({self.custom_fin_data['num_fins']} Fins, {self.custom_fin_data['material']})")
+        self.fin_display.config(state="disabled")
 
     def process_launch_data(self):
         selected_motor = self.motor_dropdown.get()
@@ -270,7 +455,7 @@ class RocketGuiApp:
             )
             self.rocket.set_fins(configured_fins)
         except ValueError:
-            print("[-] Warning: Geometry parsing fault. Using baseline metrics.")
+            print("[-] Warning: Configuration reading fault. Reverting to basic metrics.")
                 
         results = self.rocket.simulate_trajectory(time_step=0.01, max_duration=6.0)
         self.show_graph_screen(selected_motor, results)
