@@ -4,7 +4,7 @@ A responsive, Python-based desktop simulation application designed to model and 
 
 ---
 
-## 🚀 Key Features
+## Key Features
 
 * **Dynamic 2D Flight Trajectory Engine:** Simulates rocket flight kinematics from launch-rod release through motor burn, coast phase, apogee determination, and parachute descent.
 * **Smart State Persistence:** Keeps all custom component selections, airframe selections, and environmental configurations perfectly intact when stepping back from the graph screen to the assembly bay.
@@ -12,10 +12,11 @@ A responsive, Python-based desktop simulation application designed to model and 
   * Dynamically scale body tubes, nose cone profiles (Parabolic, Ogive, Conical), and fin geometries.
 * **Frictionless UI Dropdowns:** Implements a custom, high-clearance grid menu with responsive hover highlighting, single-click item execution, and click-anywhere dismissal.
 * **Interactive Wind Slider:** Includes a dual-input wind configuration bar (supporting high-precision slider snapping and automated text clearing upon typing selection).
+* **Graph Animation:**  An animation on a 2-D plane showing the rockets height and drift in real time
 
 ---
 
-## 🛠️ UI & Interaction Design Highlights
+##  UI & Interaction Design Highlights
 
 * **Double-Click to Search:** Double-clicking any component dropdown fields instantly clears the text, forces cursor typing focus, and deploys a live-filtered canvas menu.
 * **Click-to-Snap Slider:** Clicking anywhere on the horizontal wind scale track instantly warps the slider thumb to that precise value.

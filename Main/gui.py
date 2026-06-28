@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from animation import run_animation
 
 from calculations import Rocket
 
@@ -472,48 +473,70 @@ class RocketGuiApp:
 
 
     def update_live_nose_stats(self, nose_name):
-        """Parses geometric asset configurations to output mass, drag, and dimensional profiles."""
-        name_lower = str(nose_name).lower()
-        
-        # Approximate geometric profile bounds from naming designations
-        if "none" in name_lower or nose_name == "":
+        """Reads actual dimensions from master_catalog.json for the selected nose cone."""
+        noses = self.rocket.catalog_db.get("Components", {}).get("NoseCone", {})
+        part = noses.get(nose_name, None)
+
+        if part is None or "none" in str(nose_name).lower() or nose_name == "":
             mass, cd, r_in, r_out = 0.0, 0.00, 0.0, 0.0
-        elif "pnc-50" in name_lower:
-            mass, cd, r_in, r_out = 3.8, 0.12, 11.7, 12.1
-        elif "pnc-60" in name_lower:
-            mass, cd, r_in, r_out = 5.4, 0.10, 15.4, 15.9
-        elif "pnc-80" in name_lower:
-            mass, cd, r_in, r_out = 8.5, 0.20, 32.1, 32.7
         else:
-            mass, cd, r_in, r_out = 4.5, 0.15, 12.0, 12.5
+            # Mass: catalog stores oz, convert to grams (1 oz = 28.35 g)
+            raw_mass = part.get("Mass", None)
+            mass = float(raw_mass) * 28.35 if raw_mass else 0.0
+
+            # Cd: approximate by shape
+            shape = part.get("Shape", "").upper()
+            cd_map = {"OGIVE": 0.10, "PARABOLIC": 0.11, "CONICAL": 0.20,
+                    "ELLIPSOID": 0.12, "POWER": 0.13}
+            cd = cd_map.get(shape, 0.15)
+
+            # Radii: catalog stores inches OD/shoulder, convert to mm
+            od_in = float(part.get("OutsideDiameter", 0))
+            shoulder_in = float(part.get("ShoulderDiameter", od_in * 0.95))
+            r_out = (od_in / 2) * 25.4
+            r_in  = (shoulder_in / 2) * 25.4
 
         self.nose_stat_labels["Component Mass:"].config(text=f"{mass:.1f} g")
         self.nose_stat_labels["Drag Coeff. (Cd):"].config(text=f"{cd:.2f}")
         self.nose_stat_labels["Inside Radius:"].config(text=f"{r_in:.1f} mm")
         self.nose_stat_labels["Outside Radius:"].config(text=f"{r_out:.1f} mm")
 
+
     def update_live_tube_stats(self, tube_name):
-        """Parses internal database variables to extract structural properties of the airframe body tube."""
-        name_lower = str(tube_name).lower()
-        
-        # Map parameters cleanly (values match baseline custom airframe parts specifications)
-        if "none" in name_lower or tube_name == "":
+        """Reads actual dimensions from master_catalog.json for the selected body tube."""
+        tubes = self.rocket.catalog_db.get("Components", {}).get("BodyTube", {})
+        part = tubes.get(tube_name, None)
+
+        if part is None or "none" in str(tube_name).lower() or tube_name == "":
             mass, length, r_in, r_out = 0.0, 0.0, 0.0, 0.0
-        elif "bt-5" in name_lower:
-            mass, length, r_in, r_out = 4.2, 25.0, 6.3, 6.6
-        elif "bt-20" in name_lower:
-            mass, length, r_in, r_out = 8.6, 45.0, 8.7, 9.0
-        elif "bt-50" in name_lower:
-            mass, length, r_in, r_out = 14.1, 45.0, 11.7, 12.1
-        elif "bt-60" in name_lower:
-            mass, length, r_in, r_out = 22.8, 60.0, 15.4, 15.9
         else:
-            mass, length, r_in, r_out = 12.0, 35.0, 10.0, 10.4
+            # Dimensions: catalog stores inches, convert to mm
+            od_in  = float(part.get("OutsideDiameter", 0))
+            id_in  = float(part.get("InsideDiameter", 0))
+            len_in = float(part.get("Length", 0))
+
+            r_out  = (od_in / 2) * 25.4
+            r_in   = (id_in / 2) * 25.4
+            length = len_in * 2.54  # inches to cm
+
+            # Mass: estimate from material density * wall volume
+            material_key = part.get("Material", "").lower()
+            density = self.rocket.materials_db.get(material_key, 800.0)  # kg/m3
+
+            wall_thickness_m = (od_in - id_in) / 2 * 0.0254
+            id_m  = id_in * 0.0254
+            len_m = len_in * 0.0254
+            import math
+            volume_m3 = math.pi * ((id_m/2 + wall_thickness_m)**2 - (id_m/2)**2) * len_m
+            mass = density * volume_m3 * 1000  # grams
 
         self.tube_stat_labels["Tube Mass:"].config(text=f"{mass:.1f} g")
         self.tube_stat_labels["Tube Length:"].config(text=f"{length:.1f} cm")
         self.tube_stat_labels["Inside Radius:"].config(text=f"{r_in:.1f} mm")
         self.tube_stat_labels["Outside Radius:"].config(text=f"{r_out:.1f} mm")
+
+
+
 
     def update_live_motor_stats(self, motor_name):
         """Calculates and displays engine performance metrics directly from the raw thrust curve."""
@@ -711,58 +734,84 @@ class RocketGuiApp:
 
 
     def show_graph_screen(self, selected_motor, results):
-        """SCREEN 2: Renders the 2D spatial trajectory profile mapping altitude vs downrange drift."""
         if self.current_frame:
             self.current_frame.destroy()
-            
+
         self.current_frame = tk.Frame(self.container, bg="#1e1e1e")
         self.current_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
-        
+
         nav_bar = tk.Frame(self.current_frame, bg="#1e1e1e")
         nav_bar.pack(fill=tk.X, pady=(0, 10))
-        
-        ttk.Button(nav_bar, text="⬅ BACK TO PARTS CONFIGURATION", command=self.show_selection_screen).pack(side=tk.LEFT)
-        
+
+        ttk.Button(nav_bar, text="⬅ BACK",
+                command=self.show_selection_screen).pack(side=tk.LEFT)
+
+        # Build the matplotlib figure once — shared by both views
         fig, ax = plt.subplots(figsize=(7, 4.5), facecolor="#1e1e1e")
-        ax.set_facecolor("#252526")
-        ax.tick_params(colors="#ffffff")
-        ax.grid(True, color="#3c3c3c", linestyle="--")
-        
-        ax.set_title(f"2D Flight Profile: Engine [{selected_motor}]", color="#00ff66", fontsize=13, weight="bold", pad=15)
-        ax.set_xlabel("Horizontal Downrange Ground Drift (meters)", color="#ffffff", labelpad=10)
-        ax.set_ylabel("Vertical Altitude (meters)", color="#ffffff", labelpad=10)
-        
-        x_data = results["x_position"]
-        y_data = block_alt = results["altitude"]
-        apogee_alt = results["apogee_m"]
-        drift = results["drift_m"]
-        
-        if apogee_alt == 0.0:
-            ax.text(0.5, 0.5, "⚠️ ENGINE THRUST INSUFFICIENT FOR LIFTOFF\n\nThe combined airframe weight exceeds liftoff parameters.",
-                    color="#ff3333", fontsize=12, weight="bold", ha="center", va="center", transform=ax.transAxes)
-            ax.set_xlim(-1, 1)
-            ax.set_ylim(-1, 10)
-        else:
-            # Plot the actual spatial 2D trajectory arc
-            ax.plot(x_data, y_data, color="#00ff66", linewidth=2.5, label="Trajectory Path")
-            
-            # Annotate apogee coordinates
-            max_y_idx = y_data.index(max(y_data))
-            ax.plot(x_data[max_y_idx], apogee_alt, 'ro', markersize=6)
-            ax.annotate(f" Apogee: {apogee_alt}m\n Time: {results['apogee_time_s']}s", 
-                        xy=(x_data[max_y_idx], apogee_alt), color="#ffffff", weight="bold",
-                        xytext=(10, -5), textcoords='offset points')
-            
-            # Annotate final recovery touchdown ground drift point
-            ax.plot(drift, 0.0, 'bx', markersize=8, markeredgewidth=2)
-            ax.text(drift, max(y_data)*0.05, f" Landing Drift:\n {drift}m", color="#66ccff", weight="bold")
-            
-            ax.set_ylim(-2, max(y_data) * 1.2)
-            
-        fig.tight_layout()
         canvas = FigureCanvasTkAgg(fig, master=self.current_frame)
         canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-        canvas.draw()
+
+        # Store anim reference so garbage collector doesn't kill it
+        self._anim = None
+
+        def draw_static():
+            ax.clear()
+            ax.set_facecolor("#252526")
+            ax.tick_params(colors="#ffffff")
+            ax.grid(True, color="#3c3c3c", linestyle="--")
+            ax.set_title(f"2D Flight Profile: [{selected_motor}]",
+                        color="#00ff66", fontsize=13, weight="bold", pad=15)
+            ax.set_xlabel("Horizontal Downrange Drift (m)",
+                        color="#ffffff", labelpad=10)
+            ax.set_ylabel("Altitude (m)", color="#ffffff", labelpad=10)
+
+            x_data = results["x_position"]
+            y_data = results["altitude"]
+            apogee_alt = results["apogee_m"]
+            drift = results["drift_m"]
+
+            if apogee_alt == 0.0:
+                ax.text(0.5, 0.5,
+                        "⚠️ THRUST INSUFFICIENT FOR LIFTOFF",
+                        color="#ff3333", fontsize=12, weight="bold",
+                        ha="center", va="center", transform=ax.transAxes)
+            else:
+                ax.plot(x_data, y_data, color="#00ff66",
+                        linewidth=2.5, label="Trajectory")
+                max_y_idx = y_data.index(max(y_data))
+                ax.plot(x_data[max_y_idx], apogee_alt,
+                        'ro', markersize=6)
+                ax.annotate(
+                    f" Apogee: {apogee_alt}m\n T: {results['apogee_time_s']}s",
+                    xy=(x_data[max_y_idx], apogee_alt),
+                    color="#ffffff", weight="bold",
+                    xytext=(10, -5), textcoords="offset points"
+                )
+                ax.plot(drift, 0.0, 'bx', markersize=8, markeredgewidth=2)
+                ax.text(drift, apogee_alt * 0.05,
+                        f" Landing:\n {drift}m", color="#66ccff", weight="bold")
+                ax.set_ylim(-2, apogee_alt * 1.2)
+
+            fig.tight_layout()
+            canvas.draw()
+
+        def play_animation():
+            from animation import run_animation
+            self._anim = run_animation(
+                results, selected_motor, ax=ax, canvas=canvas
+            )
+
+        # Buttons
+        ttk.Button(nav_bar, text="📊 STATIC GRAPH",
+                command=draw_static).pack(side=tk.LEFT, padx=(10, 0))
+        ttk.Button(nav_bar, text="▶ PLAY ANIMATION",
+                command=play_animation).pack(side=tk.LEFT, padx=(8, 0))
+
+        # Start with static graph
+        draw_static()
+
+
+
 
 if __name__ == "__main__":
     window = tk.Tk()

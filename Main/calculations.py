@@ -120,135 +120,132 @@ class Rocket:
                 return round(f0 + fraction * (f1 - f0), 3)
         return 0.0
 
-    def simulate_trajectory(self, time_step=0.01, max_duration=10.0, wind_speed=0.0):
-        """Simulates 2D flight profile including aerodynamic drag and horizontal wind drag."""
-        # Baseline physical properties extracted from chosen UI layout specs
-        # (Assuming mass calculations sum your motor, nose, tube, and fin selections)
-        dry_mass = 0.050  # 50 grams baseline airframe sample
+    def simulate_trajectory(self, time_step=0.01, max_duration=12.0, wind_speed=0.0):
+        """Simulates 2D flight profile including aerodynamic drag and horizontal wind drift."""
         
-        # Pull geometric parameters safely from your active selections
-        # Convert outer radius from mm to meters for cross-sectional area: A = pi * r^2
-        r_outer_m = 0.0121  # Sample default (BT-50 / PNC-50 outer profile)
-        area = np.pi * (r_outer_m ** 2)
-        cd = 0.45  # Default total drag coeff coefficient (sum of nose + airframe friction)
-        rho = 1.225  # Air density at sea level (kg/m^3)
         g = 9.81
-        
-        # Initialize 2D Kinematic States
+        rho = 1.225
+        cd = 0.45
+
+
+        # --- Get reference area from attached body tube or nose cone ---
+        r_outer_m = 0.0121  # fallback default (BT-50 size)
+        for part in self.components.values():
+            if hasattr(part, 'outer_diameter'):
+                r_outer_m = float(part.outer_diameter) / 2.0 / 1000.0
+                break
+            elif hasattr(part, 'outside_diameter'):
+                r_outer_m = float(part.outside_diameter) / 2.0 / 1000.0
+                break
+        area = math.pi * (r_outer_m ** 2)
+
+
+        # --- Mass ---
+        dry_mass = self.get_dry_airframe_mass_kg()
+        if dry_mass < 0.01:
+            dry_mass = 0.05  # 50g fallback if no components attached
+
+
+        # --- Liftoff guard ---
+        initial_mass = dry_mass + self.motor_total_mass_kg
+        max_thrust = max((pt[1] for pt in self.thrust_curve), default=0.0)
+        if max_thrust <= initial_mass * g:
+            return {
+                "time": [0.0], "x_position": [0.0], "altitude": [0.0],
+                "vx": [0.0], "vy": [0.0],
+                "apogee_m": 0.0, "apogee_time_s": 0.0, "drift_m": 0.0
+            }
+
+
+        # --- State ---
         t = 0.0
         x, y = 0.0, 0.0
         vx, vy = 0.0, 0.0
-        
-        # Data storage channels
+        launched = False
+
+
         history = {
-            "time": [],
-            "x_position": [],
-            "altitude": [],
-            "vx": [],
-            "vy": [],
-            "apogee_m": 0.0,
-            "apogee_time_s": 0.0,
-            "drift_m": 0.0
+            "time": [], "x_position": [], "altitude": [],
+            "vx": [], "vy": [],
+            "apogee_m": 0.0, "apogee_time_s": 0.0, "drift_m": 0.0
         }
-        
-        # Extract motor thrust curve array safely
-        # Sample format: [[0.0, 0.0], [0.1, 6.0], [0.36, 0.0]]
-        # Ensure we have the selected motor profile loaded safely
-        motor_profile = {}
-        if hasattr(self, "current_motor"):
-            motor_profile = self.current_motor
-        elif hasattr(self, "motor"):
-            motor_profile = self.motor
-        elif hasattr(self, "motor_database") and hasattr(self, "designation"):
-            # Fallback direct lookup if the profile wasn't stored as an instance attribute
-            motor_profile = self.motor_database.get(self.designation, {})
 
-        # Extract motor configuration arrays safely from your parser dictionary
-        thrust_curve = motor_profile.get("thrust_curve", [[0.0, 0.0]])
-        motor_mass_total = motor_profile.get("total_mass_g", 6.6) / 1000.0
-        propellant_mass = motor_profile.get("propellant_mass_g", 2.0) / 1000.0
-        burn_duration = motor_profile.get("burn_time_s", 0.36)
-        
-        def get_thrust(current_time):
-            for i in range(len(thrust_curve) - 1):
-                t0, f0 = thrust_curve[i]
-                t1, f1 = thrust_curve[i+1]
-                if t0 <= current_time <= t1:
-                    # Linear interpolation across curve timestamps
-                    return f0 + (f1 - f0) * ((current_time - t0) / (t1 - t0))
-            return 0.0
 
-        # Run flight simulation iteration loop
         while t < max_duration and y >= 0.0:
-            # 1. Determine changing mass profile during motor burn
-            if t < burn_duration:
-                current_propellant_spent = (t / burn_duration) * propellant_mass
-                current_mass = dry_mass + motor_mass_total - current_propellant_spent
-                thrust = get_thrust(t)
-            else:
-                current_mass = dry_mass + (motor_mass_total - propellant_mass)
-                thrust = 0.0
-                
-            # 2. Calculate Aerodynamics relative to wind vector
-            # Wind travels horizontally; rocket flows against or with it
+            thrust = self.get_thrust_at_time(t)
+            current_mass = self.get_total_mass_at_time(t)
+
+
+            # Liftoff check — hold on pad until thrust exceeds weight
+            if not launched:
+                if thrust > current_mass * g:
+                    launched = True
+                else:
+                    history["time"].append(t)
+                    history["x_position"].append(0.0)
+                    history["altitude"].append(0.0)
+                    history["vx"].append(0.0)
+                    history["vy"].append(0.0)
+                    t += time_step
+                    continue
+
+
+            # Drag — relative to wind
             v_rel_x = vx - wind_speed
             v_rel_y = vy
-            v_mag = np.sqrt(v_rel_x**2 + v_rel_y**2)
-            
+            v_mag = math.sqrt(v_rel_x**2 + v_rel_y**2)
+
+
             if v_mag > 0.001:
-                # Calculate angle of attack vector axis
-                sin_alpha = v_rel_x / v_mag
-                cos_alpha = v_rel_y / v_mag
-                
-                # Compute total drag magnitude
-                f_drag = 0.5 * rho * (v_mag**2) * area * cd
-                fx_drag = f_drag * sin_alpha
-                fy_drag = f_drag * cos_alpha
+                f_drag = 0.5 * rho * v_mag**2 * area * cd
+                fx_drag = -f_drag * (v_rel_x / v_mag)
+                fy_drag = -f_drag * (v_rel_y / v_mag)
             else:
                 fx_drag = 0.0
                 fy_drag = 0.0
-                sin_alpha = 0.0
-                cos_alpha = 1.0
 
-            # 3. Handle Thrust Direction (Assumes vehicle self-stabilizes into air velocity vector)
-            fx_thrust = thrust * (-sin_alpha) if t < burn_duration else 0.0
-            fy_thrust = thrust * cos_alpha if t < burn_duration else 0.0
-            
-            # Guard liftoff condition: cannot launch unless vertical force clears gravity threshold
-            if y == 0.0 and fy_thrust <= (current_mass * g):
-                fx_thrust, fy_thrust = 0.0, 0.0
-                vx, vy = 0.0, 0.0
-            
-            # 4. Sum Forces & Integrate Equations of Motion (Euler Method)
-            ax = (fx_thrust - fx_drag) / current_mass
-            ay = (fy_thrust - fy_drag - (current_mass * g)) / current_mass
-            
+
+            # Thrust — always vertical (rocket self-stabilizes upward during burn)
+            fx_thrust = 0.0
+            fy_thrust = thrust
+
+
+            # Equations of motion
+            ax = (fx_thrust + fx_drag) / current_mass
+            ay = (fy_thrust + fy_drag) / current_mass - g
+
+
             vx += ax * time_step
             vy += ay * time_step
-            
-            x += vx * time_step
-            y += vy * time_step
-            
-            # Prevent underground clip values
+            x  += vx * time_step
+            y  += vy * time_step
+
+
             if y < 0.0:
                 y = 0.0
-                vy = 0.0
-                vx = 0.0
-                
-            # Log metrics tracking channels
-            history["time"].append(t)
-            history["x_position"].append(x)
-            history["altitude"].append(y)
-            history["vx"].append(vx)
-            history["vy"].append(vy)
-            
+
+
+            history["time"].append(round(t, 4))
+            history["x_position"].append(round(x, 4))
+            history["altitude"].append(round(y, 4))
+            history["vx"].append(round(vx, 4))
+            history["vy"].append(round(vy, 4))
+
+
             t += time_step
-            
-        # Compile summary parameters
+
+
+            # Stop once it lands after liftoff
+            if launched and y <= 0.0 and vy <= 0.0 and t > 1.0:
+                break
+
+
+        # Summary
         if history["altitude"]:
             history["apogee_m"] = round(max(history["altitude"]), 2)
             max_idx = history["altitude"].index(max(history["altitude"]))
             history["apogee_time_s"] = round(history["time"][max_idx], 2)
-            history["drift_m"] = round(x, 2)
-            
+            history["drift_m"] = round(history["x_position"][-1], 2)
+
+
         return history
